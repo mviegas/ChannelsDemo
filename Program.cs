@@ -8,10 +8,10 @@ namespace ChannelsDemo
     {
         public static async Task Main(string[] args)
         {
-            const int readDelay = 1000;
+            // Setting a read delay bigger than a wrote delay, so that we can see what happens when channels are "full"
+            const int readDelay = 500;
 
-            // Setting a write delay bigger than a read delay, so that we can see what happens when channels are "full"
-            const int writeDelay = 2000;
+            const int writeDelay = 100;
 
             // Creating a bounded channel with capacity of 1 
             var channel = Channel.CreateBounded<int>(new BoundedChannelOptions(1)
@@ -23,14 +23,14 @@ namespace ChannelsDemo
             // Calling Task.Run so that the Channel.Writer executes in a different synchronization context than the Channel.Reader
             _ = Task.Run(async () =>
             {
-                await TryWrite(channel, readDelay).ConfigureAwait(false);
+                await TryWrite(channel, writeDelay).ConfigureAwait(false);
 
-                // await WriteAsync(channel, readDelay).ConfigureAwait(false);
+                // await WriteAsync(channel, writeDelay).ConfigureAwait(false);
 
-                // await WaitToWrite(channel, readDelay).ConfigureAwait(false);
+                // await WaitToWrite(channel, writeDelay).ConfigureAwait(false);
             });
 
-            await ReadAsync(channel, writeDelay).ConfigureAwait(false);
+            await ReadAsync(channel, readDelay).ConfigureAwait(false);
         }
 
         private static async Task ReadAsync(Channel<int> channel, int delay)
@@ -64,6 +64,7 @@ namespace ChannelsDemo
             {
                 await channel.Writer.WriteAsync(i);
                 await Task.Delay(delay).ConfigureAwait(false);
+                ExtendedConsole.WriteLine($"Writing {i}", ConsoleColor.Blue);
             }
         }
 
@@ -75,6 +76,7 @@ namespace ChannelsDemo
             {
                 await channel.Writer.WriteAsync(i, default);
                 await Task.Delay(delay).ConfigureAwait(false);
+                ExtendedConsole.WriteLine($"Writing {i}", ConsoleColor.Blue);
                 i++;
             }
         }

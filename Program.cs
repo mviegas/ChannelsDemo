@@ -8,6 +8,13 @@ namespace ChannelsDemo
     {
         public static async Task Main(string[] args)
         {
+            await ChannelOutOfCapacityExample();
+
+            // await ChannelCompletedWithoutExceptionRaised();
+        }
+
+        private static async Task ChannelOutOfCapacityExample()
+        {
             // Setting a read delay bigger than a wrote delay, so that we can see what happens when channels are "full"
             const int readDelay = 500;
 
@@ -23,61 +30,60 @@ namespace ChannelsDemo
             // Calling Task.Run so that the Channel.Writer executes in a different synchronization context than the Channel.Reader
             _ = Task.Run(async () =>
             {
-                await TryWrite(channel, writeDelay).ConfigureAwait(false);
+                for (int i = 0; ; i++)
+                {
+                    if (!channel.Writer.TryWrite(i))
+                    {
+                        ExtendedConsole.WriteLine($"Dropping {i}", ConsoleColor.Red);
+                    }
 
-                // await WriteAsync(channel, writeDelay).ConfigureAwait(false);
-
-                // await WaitToWrite(channel, writeDelay).ConfigureAwait(false);
+                    await Task.Delay(writeDelay).ConfigureAwait(false);
+                }
             });
 
-            await ReadAsync(channel, readDelay).ConfigureAwait(false);
-        }
-
-        private static async Task ReadAsync(Channel<int> channel, int delay)
-        {
             while (true)
             {
                 var message = await channel.Reader.ReadAsync().ConfigureAwait(false);
 
                 ExtendedConsole.WriteLine($"Readed {message}", ConsoleColor.Green);
 
-                await Task.Delay(delay).ConfigureAwait(false);
+                await Task.Delay(readDelay).ConfigureAwait(false);
             }
         }
 
-        private static async Task TryWrite(Channel<int> channel, int delay)
+        private static async Task ChannelCompletedWithoutExceptionRaised()
         {
-            for (int i = 0; ; i++)
+            var channel = Channel.CreateBounded<int>(new BoundedChannelOptions(1)
             {
-                if (!channel.Writer.TryWrite(i))
+                FullMode = BoundedChannelFullMode.Wait
+            });
+
+            _ = Task.Run(async () =>
+            {
+                for (int i = 0; ; i++)
                 {
-                    ExtendedConsole.WriteLine($"Dropping {i}", ConsoleColor.Red);
+                    await channel.Writer.WriteAsync(i);
+                    ExtendedConsole.WriteLine($"Writing {i}", ConsoleColor.Blue);
+
+                    if (i == 10)
+                    {
+                        ExtendedConsole.WriteLine($"Writer: completing channel after 10 executions", ConsoleColor.Yellow);
+                        channel.Writer.TryComplete();
+                    }
                 }
+            });
 
-                await Task.Delay(delay).ConfigureAwait(false);
-            }
-        }
-
-        private static async Task WriteAsync(Channel<int> channel, int delay)
-        {
-            for (int i = 0; ; i++)
+            // Using WaitToRead, no exception is raised when channel is completed, unless it is explicit passed on completion
+            while (await channel.Reader.WaitToReadAsync(default).ConfigureAwait(false))
             {
-                await channel.Writer.WriteAsync(i);
-                await Task.Delay(delay).ConfigureAwait(false);
-                ExtendedConsole.WriteLine($"Writing {i}", ConsoleColor.Blue);
-            }
-        }
-
-        private static async Task WaitToWrite(Channel<int> channel, int delay)
-        {
-            int i = 1;
-
-            while (await channel.Writer.WaitToWriteAsync(default).ConfigureAwait(false))
-            {
-                await channel.Writer.WriteAsync(i, default);
-                await Task.Delay(delay).ConfigureAwait(false);
-                ExtendedConsole.WriteLine($"Writing {i}", ConsoleColor.Blue);
-                i++;
+                if (channel.Reader.TryRead(out int msg))
+                {
+                    ExtendedConsole.WriteLine($"Readed {msg}", ConsoleColor.Green);
+                }
+                else
+                {
+                    Console.WriteLine($"Message already {msg} consumed");
+                }
             }
         }
     }
